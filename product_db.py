@@ -1,12 +1,15 @@
 
-from fastapi import Depends, FastAPI, HTTPException
+from typing import List
+
+from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy import Column, Float, Integer, String, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 
 
-sqlite_file_name = "database.db"
+sqlite_file_name = "product_database.db"
 sqlite_url = f"sqlite:///{sqlite_file_name}"
 
 connect_args = {"check_same_thread": False}
@@ -47,12 +50,38 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
-@app.post("/products", response_model=ProductResponse)
-async def create_product(product: ProductCreate, db: Session = Depends(get_db)):
-    db_product = ProductDB(**product.model_dump())
+@app.post(
+    "/products",
+    response_model=Product,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_product(
+    product: Product,
+    db: Session = Depends(get_db),
+):
+    existing_product = (
+        db.query(ProductDB)
+        .filter(ProductDB.id == product.id)
+        .first()
+    )
+
+    if existing_product is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Product with id {product.id} already exists",
+        )
+
+    db_product = ProductDB(
+        id=product.id,
+        name=product.name,
+        description=product.description,
+        price=product.price,
+    )
+
     db.add(db_product)
     db.commit()
     db.refresh(db_product)
+
     return db_product
 
 @app.get("/products", response_model=List[ProductResponse])
@@ -86,3 +115,14 @@ async def update_product(product_id: int, product: ProductCreate, db: Session = 
     db.commit()
     db.refresh(db_product)
     return db_product
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)

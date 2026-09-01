@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.log
+database.db
+node_modules/
+.next/
+out/
+.postman/
+.env
+.env.*
+.DS_Store

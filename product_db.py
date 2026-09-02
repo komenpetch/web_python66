@@ -50,11 +50,7 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
-@app.post(
-    "/products",
-    response_model=Product,
-    status_code=status.HTTP_201_CREATED,
-)
+@app.post("/products",response_model=Product,status_code=status.HTTP_201_CREATED,)
 async def create_product(
     product: Product,
     db: Session = Depends(get_db),

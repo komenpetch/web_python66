@@ -8,16 +8,20 @@ from .models import CategoryDB, ProductDB
 from .schemas import CategoryCreate, CategoryResponse, CategoryUpdate, Product, ProductCreate, ProductResponse
 
 from .database import Base, get_db, engine
+from .auth import router as auth_router, get_current_user
 
 
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
+app.include_router(auth_router)
+
 @app.post("/products",response_model=ProductResponse,status_code=status.HTTP_201_CREATED,)
 async def create_product(
     product: Product,
     db: Session = Depends(get_db),
+    username: str = Depends(get_current_user),
 ):
     existing_product = (
         db.query(ProductDB)
@@ -57,7 +61,7 @@ async def get_product(product_id: int, db: Session = Depends(get_db)):
     return product
 
 @app.delete("/products/{product_id}", response_model=ProductResponse)
-async def delete_product(product_id: int, db: Session = Depends(get_db)):
+async def delete_product(product_id: int, db: Session = Depends(get_db), username: str = Depends(get_current_user)):
     product = db.query(ProductDB).filter(ProductDB.id == product_id).first()
     if product is None:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -66,7 +70,7 @@ async def delete_product(product_id: int, db: Session = Depends(get_db)):
     return product
 
 @app.put("/products/{product_id}", response_model=ProductResponse)
-async def update_product(product_id: int, product: ProductCreate, db: Session = Depends(get_db)):
+async def update_product(product_id: int, product: ProductCreate, db: Session = Depends(get_db), username: str = Depends(get_current_user)):
     db_product = db.query(ProductDB).filter(ProductDB.id == product_id).first()
     if db_product is None:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -79,7 +83,7 @@ async def update_product(product_id: int, product: ProductCreate, db: Session = 
 # category
 
 @app.post("/categories", response_model=CategoryResponse, status_code=status.HTTP_201_CREATED)
-async def create_category(category: CategoryCreate, db: Session = Depends(get_db)):
+async def create_category(category: CategoryCreate, db: Session = Depends(get_db), username: str = Depends(get_current_user)):
     db_category = CategoryDB(name=category.name)
     db.add(db_category)
     db.commit()
@@ -98,7 +102,7 @@ async def get_category(category_id: int, db: Session = Depends(get_db)):
     return category
 
 @app.put("/categories/{category_id}", response_model=CategoryResponse)
-async def update_category(category_id: int, category: CategoryUpdate, db: Session = Depends(get_db)):
+async def update_category(category_id: int, category: CategoryUpdate, db: Session = Depends(get_db), username: str = Depends(get_current_user)):
     db_category = db.query(CategoryDB).filter(CategoryDB.id == category_id).first()
     if db_category is None:
         raise HTTPException(status_code=404, detail="Category not found")
@@ -108,7 +112,7 @@ async def update_category(category_id: int, category: CategoryUpdate, db: Sessio
     return db_category
 
 @app.delete("/categories/{category_id}", response_model=CategoryResponse)
-async def delete_category(category_id: int, db: Session = Depends(get_db)):
+async def delete_category(category_id: int, db: Session = Depends(get_db), username: str = Depends(get_current_user)):
     db_category = db.query(CategoryDB).filter(CategoryDB.id == category_id).first()
     if db_category is None:
         raise HTTPException(status_code=404, detail="Category not found")
@@ -117,7 +121,7 @@ async def delete_category(category_id: int, db: Session = Depends(get_db)):
     return db_category
 
 @app.post("/products/{product_id}/categories/{category_id}")
-async def register_category(product_id: int, category_id: int, db: Session = Depends(get_db)):
+async def register_category(product_id: int, category_id: int, db: Session = Depends(get_db), username: str = Depends(get_current_user)):
     product = db.query(ProductDB).filter(ProductDB.id == product_id).first()
     category = db.query(CategoryDB).filter(CategoryDB.id == category_id).first()
 
@@ -136,7 +140,7 @@ async def register_category(product_id: int, category_id: int, db: Session = Dep
     return {"message": "Category registered for product"}
 
 @app.delete("/products/{product_id}/categories/{category_id}")
-async def unregister_category(product_id: int, category_id: int, db: Session = Depends(get_db)):
+async def unregister_category(product_id: int, category_id: int, db: Session = Depends(get_db), username: str = Depends(get_current_user)):
     product = db.query(ProductDB).filter(ProductDB.id == product_id).first()
     category = db.query(CategoryDB).filter(CategoryDB.id == category_id).first()
 

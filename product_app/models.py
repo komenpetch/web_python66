@@ -34,3 +34,10 @@ class CategoryDB(Base):
         "ProductDB", secondary=product_categories,
         back_populates="categories"
     )
+
+
+class UserDB(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    hashed_password = Column(String)

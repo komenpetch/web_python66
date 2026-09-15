@@ -8,7 +8,7 @@ from .models import CategoryDB, ProductDB
 from .schemas import CategoryCreate, CategoryResponse, CategoryUpdate, Product, ProductCreate, ProductResponse
 
 from .database import Base, get_db, engine
-from .auth import router as auth_router, get_current_user
+from .jwt.auth import router as auth_router, get_current_user
 
 
 Base.metadata.create_all(bind=engine)

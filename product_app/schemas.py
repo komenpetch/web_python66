@@ -29,6 +29,7 @@ class ProductCreate(Product):
 
 class ProductResponse(Product):
     id: int
+    image_url: str | None = None
     categories: list[CategoryResponse] = []
     class Config:
         from_attributes = True

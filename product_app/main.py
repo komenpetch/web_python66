@@ -1,5 +1,7 @@
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
+from fastapi.staticfiles import StaticFiles
 from typing import List
+import os, uuid
 
 from sqlalchemy.orm import Session
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,13 +11,20 @@ from .schemas import CategoryCreate, CategoryResponse, CategoryUpdate, Product, 
 
 from .database import Base, get_db, engine
 from .jwt.auth import router as auth_router, get_current_user
+from .chatbot import router as chat_router, broadcast_product_event
 
 
 Base.metadata.create_all(bind=engine)
 
+UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
 app = FastAPI()
 
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+
 app.include_router(auth_router)
+app.include_router(chat_router)
 
 @app.post("/products",response_model=ProductResponse,status_code=status.HTTP_201_CREATED,)
 async def create_product(
@@ -46,6 +55,8 @@ async def create_product(
     db.commit()
     db.refresh(db_product)
 
+    await broadcast_product_event("PRODUCT_CREATED", db_product)
+
     return db_product
 
 @app.get("/products", response_model=List[ProductResponse])
@@ -67,6 +78,7 @@ async def delete_product(product_id: int, db: Session = Depends(get_db), usernam
         raise HTTPException(status_code=404, detail="Product not found")
     db.delete(product)
     db.commit()
+    await broadcast_product_event("PRODUCT_DELETED", product)
     return product
 
 @app.put("/products/{product_id}", response_model=ProductResponse)
@@ -78,6 +90,44 @@ async def update_product(product_id: int, product: ProductCreate, db: Session = 
         setattr(db_product, key, value)
     db.commit()
     db.refresh(db_product)
+    await broadcast_product_event("PRODUCT_UPDATED", db_product)
+    return db_product
+
+ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+
+@app.post("/products/{product_id}/image", response_model=ProductResponse)
+async def upload_product_image(
+    product_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    username: str = Depends(get_current_user),
+):
+    db_product = db.query(ProductDB).filter(ProductDB.id == product_id).first()
+    if db_product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    if file.content_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(status_code=400, detail="Only JPEG, PNG, WebP, or GIF images are allowed")
+
+    ext = file.filename.rsplit(".", 1)[-1] if "." in file.filename else "jpg"
+    filename = f"{uuid.uuid4()}.{ext}"
+    file_path = os.path.join(UPLOAD_DIR, filename)
+
+    with open(file_path, "wb") as f:
+        f.write(await file.read())
+
+    # Remove old image file if one exists
+    if db_product.image_url:
+        old_filename = db_product.image_url.split("/")[-1]
+        old_path = os.path.join(UPLOAD_DIR, old_filename)
+        if os.path.exists(old_path):
+            os.remove(old_path)
+
+    db_product.image_url = f"/uploads/{filename}"
+    db.commit()
+    db.refresh(db_product)
+
+    await broadcast_product_event("PRODUCT_UPDATED", db_product)
     return db_product
 
 # category

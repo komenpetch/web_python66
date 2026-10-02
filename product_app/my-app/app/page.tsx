@@ -2,6 +2,8 @@
 
 import { FormEvent, useEffect, useState } from "react";
 
+import ChatBot from "./ChatBot";
+
 type Category = {
   id: number;
   name: string;
@@ -12,6 +14,7 @@ type Product = {
   name: string;
   description: string;
   price: number;
+  image_url?: string | null;
   categories: Category[];
 };
 
@@ -21,6 +24,19 @@ const CATEGORIES_API_URL = `${BASE_URL}/categories`;
 const REGISTER_URL = `${BASE_URL}/register`;
 const LOGIN_URL = `${BASE_URL}/login`;
 const LOGOUT_URL = `${BASE_URL}/logout`;
+
+async function fetchProducts(): Promise<Product[]> {
+  const response = await fetch(API_URL);
+  const result = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(
+      result?.detail || `Failed to fetch products (status ${response.status})`
+    );
+  }
+
+  return result ?? [];
+}
 
 export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -112,21 +128,11 @@ export default function Home() {
     }
   }, []);
 
-  // GET PRODUCTS
-  useEffect(() => {
-    async function getProducts() {
-      try {
-        const response = await fetch(API_URL);
-        const result = await parseJsonSafe(response);
-
-        if (!response.ok) {
-          throw new Error(
-            result?.detail || `Failed to fetch products (status ${response.status})`
-          );
-        }
-
-        setProducts(result ?? []);
-      } catch (error) {
+  // GET PRODUCTS (also re-run when the chat bot broadcasts a product change)
+  function loadProducts() {
+    return fetchProducts()
+      .then((result) => setProducts(result))
+      .catch((error) => {
         console.error(error);
 
         if (error instanceof Error) {
@@ -134,12 +140,12 @@ export default function Home() {
         } else {
           showError("Failed to fetch products");
         }
-      } finally {
-        setLoading(false);
-      }
-    }
+      })
+      .finally(() => setLoading(false));
+  }
 
-    getProducts();
+  useEffect(() => {
+    loadProducts();
   }, []);
 
   // GET CATEGORIES
@@ -352,6 +358,44 @@ export default function Home() {
         showError(error.message);
       } else {
         showError("Failed to save product");
+      }
+    }
+  }
+
+  // UPLOAD PRODUCT IMAGE
+  async function uploadProductImage(productId: number, file: File) {
+    clearMessages();
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch(`${API_URL}/${productId}/image`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: formData,
+      });
+
+      const result = await parseJsonSafe(response);
+
+      if (!response.ok) {
+        throw new Error(
+          result?.detail || `Failed to upload image (status ${response.status})`
+        );
+      }
+
+      setProducts((currentProducts) =>
+        currentProducts.map((product) =>
+          product.id === productId ? { ...product, image_url: result.image_url } : product
+        )
+      );
+
+      showSuccess("Image uploaded successfully");
+    } catch (error) {
+      if (error instanceof Error) {
+        showError(error.message);
+      } else {
+        showError("Failed to upload image");
       }
     }
   }
@@ -845,6 +889,14 @@ export default function Home() {
           {products.map((product) => (
             <li key={product.id} className="rounded border p-4">
               <div className="mb-3">
+                {product.image_url && (
+                  <img
+                    src={`${BASE_URL}${product.image_url}`}
+                    alt={product.name}
+                    className="mb-2 h-40 w-40 rounded object-cover"
+                  />
+                )}
+
                 <h3 className="text-lg font-semibold">
                   {product.name}
                 </h3>
@@ -923,11 +975,11 @@ export default function Home() {
               </div>
 
               {token && (
-                <>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={() => editProduct(product)}
-                    className="mr-2 rounded bg-yellow-500 px-3 py-1 text-white hover:bg-yellow-600"
+                    className="rounded bg-yellow-500 px-3 py-1 text-white hover:bg-yellow-600"
                   >
                     Edit
                   </button>
@@ -939,12 +991,28 @@ export default function Home() {
                   >
                     Delete
                   </button>
-                </>
+
+                  <label className="cursor-pointer rounded bg-green-600 px-3 py-1 text-white hover:bg-green-700">
+                    {product.image_url ? "Change Image" : "Upload Image"}
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      className="hidden"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) uploadProductImage(product.id, file);
+                        event.target.value = "";
+                      }}
+                    />
+                  </label>
+                </div>
               )}
             </li>
           ))}
         </ul>
       )}
+
+      <ChatBot onProductEvent={loadProducts} />
     </main>
   );
 }

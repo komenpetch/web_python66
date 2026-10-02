@@ -18,6 +18,7 @@ class ProductDB(Base):
     name = Column(String, index=True)
     description = Column(String, index=False)
     price = Column(Float, index=False)
+    image_url = Column(String, nullable=True)
 
     categories = relationship(
         "CategoryDB", secondary=product_categories,

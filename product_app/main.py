@@ -1,8 +1,14 @@
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
+from contextlib import asynccontextmanager
+
+from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile, status
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from typing import List
 import os, uuid
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -12,19 +18,58 @@ from .schemas import CategoryCreate, CategoryResponse, CategoryUpdate, Product, 
 from .database import Base, get_db, engine
 from .jwt.auth import router as auth_router, get_current_user
 from .chatbot import router as chat_router, broadcast_product_event
+from .limiter import limiter
 
-
-Base.metadata.create_all(bind=engine)
 
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # startup code
+    print("[STARTUP] preparing system")
+    Base.metadata.create_all(bind=engine)
+
+    # test access connection
+    with engine.connect() as conn:
+        conn.execute(text("SELECT 1"))
+    app.state.db = engine
+    print("[STARTUP] connect SQLite(product_database.db) successfully")
+
+    try:
+        yield
+    finally:
+
+        # shutdown code
+        app.state.db = None
+        engine.dispose()
+        print("[SHUTDOWN] disconnect SQLite(product_database.db) successfully")
+
+app = FastAPI(title="Product App", lifespan=lifespan)
+app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
+
+async def custom_rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content={
+            "success": False,
+            "message": "Rate limit exceeded. Please try again later.",
+            "limit": str(exc.detail)},
+    )
+
+app.add_exception_handler(RateLimitExceeded, custom_rate_limit_exceeded_handler)
 
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 app.include_router(auth_router)
 app.include_router(chat_router)
+
+@app.get("/")
+def read_root():
+    return {"message": "Online",
+            "db_connected": app.state.db is not None
+            }
 
 @app.post("/products",response_model=ProductResponse,status_code=status.HTTP_201_CREATED,)
 async def create_product(

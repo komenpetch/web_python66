@@ -6,14 +6,14 @@ from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from typing import List
-import os, uuid
+import asyncio, os, secrets, time, uuid
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from fastapi.middleware.cors import CORSMiddleware
 
 from .models import CategoryDB, ProductDB
-from .schemas import CategoryCreate, CategoryResponse, CategoryUpdate, Product, ProductCreate, ProductResponse
+from .schemas import CategoryCreate, CategoryResponse, CategoryUpdate, Confirmation, Product, ProductCreate, ProductResponse, ReservationCreate
 
 from .database import Base, get_db, engine
 from .jwt.auth import router as auth_router, get_current_user
@@ -33,6 +33,12 @@ async def lifespan(app: FastAPI):
     # test access connection
     with engine.connect() as conn:
         conn.execute(text("SELECT 1"))
+
+    # add quantity column to an existing products table (create_all won't alter it)
+    with engine.begin() as conn:
+        columns = [row[1] for row in conn.execute(text("PRAGMA table_info(products)"))]
+        if "quantity" not in columns:
+            conn.execute(text("ALTER TABLE products ADD COLUMN quantity INTEGER NOT NULL DEFAULT 0"))
     app.state.db = engine
     print("[STARTUP] connect SQLite(product_database.db) successfully")
 
@@ -94,6 +100,7 @@ async def create_product(
         name=product.name,
         description=product.description,
         price=product.price,
+        quantity=product.quantity,
     )
 
     db.add(db_product)
@@ -106,11 +113,15 @@ async def create_product(
 
 @app.get("/products", response_model=List[ProductResponse])
 async def get_products(db: Session = Depends(get_db)):
+    async with lock:
+        release_expired_reservations(db, time.monotonic())
     products = db.query(ProductDB).all()
     return products
 
 @app.get("/products/{product_id}", response_model=ProductResponse)
 async def get_product(product_id: int, db: Session = Depends(get_db)):
+    async with lock:
+        release_expired_reservations(db, time.monotonic())
     product = db.query(ProductDB).filter(ProductDB.id == product_id).first()
     if product is None:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -137,6 +148,68 @@ async def update_product(product_id: int, product: ProductCreate, db: Session = 
     db.refresh(db_product)
     await broadcast_product_event("PRODUCT_UPDATED", db_product)
     return db_product
+
+# reservation
+
+RESERVATION_SECONDS = 30
+lock = asyncio.Lock()
+
+# token -> {"product_id", "amount", "expires_at"}
+reservations: dict[str, dict] = {}
+
+def release_expired_reservations(db: Session, now: float):
+    # purchase not confirmed in time -> roll the amount back into stock
+    expired = [token for token, r in reservations.items() if now >= r["expires_at"]]
+    for token in expired:
+        reservation = reservations.pop(token)
+        product = db.query(ProductDB).filter(ProductDB.id == reservation["product_id"]).first()
+        if product is not None:
+            product.quantity += reservation["amount"]
+    if expired:
+        db.commit()
+
+@app.post("/products/{product_id}/reserve", status_code=status.HTTP_201_CREATED)
+async def reserve_product(product_id: int, data: ReservationCreate, db: Session = Depends(get_db)):
+    async with lock:
+        now = time.monotonic()
+        release_expired_reservations(db, now)
+        product = db.query(ProductDB).filter(ProductDB.id == product_id).first()
+        if product is None:
+            raise HTTPException(status_code=404, detail="Product not found")
+        if data.amount > product.quantity:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Not enough stock: requested {data.amount}, remaining {product.quantity}",
+            )
+        product.quantity -= data.amount
+        db.commit()
+        token = secrets.token_urlsafe(24)
+        reservations[token] = {
+            "product_id": product_id,
+            "amount": data.amount,
+            "expires_at": now + RESERVATION_SECONDS,
+        }
+        return {
+            "message": f"Reserved for {RESERVATION_SECONDS} seconds",
+            "reservation_token": token,
+            "product_id": product_id,
+            "amount": data.amount,
+            "remaining_quantity": product.quantity,
+            "expires_in": RESERVATION_SECONDS,
+        }
+
+@app.post("/confirm")
+async def confirm_purchase(data: Confirmation, db: Session = Depends(get_db)):
+    async with lock:
+        release_expired_reservations(db, time.monotonic())
+        reservation = reservations.pop(data.reservation_token, None)
+        if reservation is None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="No active reservation")
+        return {
+            "message": "Purchase confirmed",
+            "product_id": reservation["product_id"],
+            "amount": reservation["amount"],
+        }
 
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 

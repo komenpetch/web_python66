@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 # Category
@@ -23,6 +23,7 @@ class Product(BaseModel):
     name: str
     description: str
     price: float
+    quantity: int = Field(default=0, ge=0)
 
 class ProductCreate(Product):
     pass
@@ -33,6 +34,14 @@ class ProductResponse(Product):
     categories: list[CategoryResponse] = []
     class Config:
         from_attributes = True
+
+
+# Reservation
+class ReservationCreate(BaseModel):
+    amount: int = Field(gt=0)
+
+class Confirmation(BaseModel):
+    reservation_token: str = Field(min_length=1, max_length=100)
 
 
 # User

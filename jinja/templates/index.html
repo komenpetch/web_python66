@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard Overview{% endblock %}
+
+{% block content %}
+<section class="summary">
+    <p>Tracked Items: <strong id="total-count">{{ items | length }}</strong></p>
+</section>
+
+<!-- Standard Form Submission -->
+<form action="{{ url_for('add_item') }}" method="POST" class="add-form">
+    <input type="text" name="name" placeholder="Item Name" required>
+    <input type="number" name="stock" placeholder="Stock Level" min="0" required>
+    <button type="submit" class="btn btn-primary">Add Resource</button>
+</form>
+
+<!-- Inventory Table -->
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>#</th>
+            <th>Name</th>
+            <th>Stock</th>
+            <th>Status</th>
+            <th>Action</th>
+        </tr>
+    </thead>
+    <tbody id="inventory-list">
+        {% for item in items %}
+        <tr id="row-{{ item.id }}">
+            <td>{{ loop.index }}</td>
+            <td><strong>{{ item.name | title }}</strong></td>
+            <td>{{ item.stock }}</td>
+            <td>
+                {% if item.stock == 0 %}
+                    <span class="badge danger">Out of Stock</span>
+                {% elif item.stock < 3 %}
+                    <span class="badge warning">Low Stock</span>
+                {% else %}
+                    <span class="badge success">Normal</span>
+                {% endif %}
+            </td>
+            <td>
+                <!-- Pass dynamic ID cleanly into data-id for app.js -->
+                <button class="btn btn-delete js-delete" data-id="{{ item.id }}">
+                    Delete
+                </button>
+            </td>
+        </tr>
+        {% else %}
+        <tr id="empty-row">
+            <td colspan="5">No inventory records available.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,53 @@
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0;
+    background: #f8fafc;
+    color: #1e293b;
+}
+
+.topbar {
+    background: #0f172a;
+    color: #fff;
+    padding: 1rem 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.topbar .brand { font-weight: bold; }
+.topbar a { color: #94a3b8; text-decoration: none; }
+
+.container { max-width: 800px; margin: 2rem auto; padding: 0 1rem; }
+
+.add-form { display: flex; gap: 0.5rem; margin: 1.5rem 0; }
+.add-form input {
+    padding: 0.5rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    flex: 1;
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.data-table th, .data-table td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #e2e8f0;
+    text-align: left;
+}
+
+.badge { padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: bold; }
+.badge.danger { background: #fee2e2; color: #b91c1c; }
+.badge.warning { background: #fef3c7; color: #b45309; }
+.badge.success { background: #dcfce7; color: #15803d; }
+
+.btn { padding: 0.5rem 0.8rem; border: none; border-radius: 4px; cursor: pointer; }
+.btn-primary { background: #2563eb; color: #fff; }
+.btn-delete { background: #fee2e2; color: #dc2626; }
+.btn-delete:hover { background: #fca5a5; }

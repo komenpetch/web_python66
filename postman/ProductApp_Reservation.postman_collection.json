@@ -1,0 +1,184 @@
+{
+  "info": {
+    "name": "Product App - Reservation",
+    "description": "Reservation flow for the Product App backend (http://127.0.0.1:8000).\n\nRun the requests top to bottom:\n1. Login  -> saves {{token}} automatically\n2. Create product (stock)  -> creates product {{product_id}} with quantity {{stock}}\n3. Reserve  -> saves {{res_token}} automatically, stock drops\n4. Reserve too many (expect 409)  -> not enough stock\n5. Confirm purchase  -> uses {{res_token}}\n6. Get product  -> check the quantity\n\nEdit the collection variables (username / password / product_id / stock / amount) in the Variables tab.\n\nNote: /login needs Redis running (rate limiter). /reserve and /confirm are public (no auth).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://127.0.0.1:8000" },
+    { "key": "username", "value": "admin" },
+    { "key": "password", "value": "1234" },
+    { "key": "product_id", "value": "12345" },
+    { "key": "stock", "value": "2" },
+    { "key": "amount", "value": "2" },
+    { "key": "token", "value": "" },
+    { "key": "res_token", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Login (saves token)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.response.code === 200) {",
+              "  const json = pm.response.json();",
+              "  pm.collectionVariables.set('token', json.token);",
+              "  pm.test('got a token', () => pm.expect(json.token).to.be.a('string'));",
+              "} else {",
+              "  pm.test('login failed - is Redis running? status ' + pm.response.code, () => false);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+        ],
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            { "key": "username", "value": "{{username}}" },
+            { "key": "password", "value": "{{password}}" }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/login",
+          "host": ["{{baseUrl}}"],
+          "path": ["login"]
+        }
+      }
+    },
+    {
+      "name": "2. Create product with stock",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{token}}" }]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id\": {{product_id}},\n  \"name\": \"Postman Test\",\n  \"description\": \"created from Postman\",\n  \"price\": 9.99,\n  \"quantity\": {{stock}}\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/products",
+          "host": ["{{baseUrl}}"],
+          "path": ["products"]
+        }
+      }
+    },
+    {
+      "name": "3. Reserve (saves res_token)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.response.code === 201) {",
+              "  const json = pm.response.json();",
+              "  pm.collectionVariables.set('res_token', json.reservation_token);",
+              "  pm.test('reserved, remaining = ' + json.remaining_quantity, () => true);",
+              "} else {",
+              "  pm.test('reserve failed - status ' + pm.response.code, () => false);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"amount\": {{amount}}\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/products/{{product_id}}/reserve",
+          "host": ["{{baseUrl}}"],
+          "path": ["products", "{{product_id}}", "reserve"]
+        }
+      }
+    },
+    {
+      "name": "4. Reserve too many (expect 409)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('409 Not enough stock', () => pm.response.to.have.status(409));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"amount\": 999\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/products/{{product_id}}/reserve",
+          "host": ["{{baseUrl}}"],
+          "path": ["products", "{{product_id}}", "reserve"]
+        }
+      }
+    },
+    {
+      "name": "5. Confirm purchase",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200 confirmed', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"reservation_token\": \"{{res_token}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/confirm",
+          "host": ["{{baseUrl}}"],
+          "path": ["confirm"]
+        }
+      }
+    },
+    {
+      "name": "6. Get product (check quantity)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/products/{{product_id}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["products", "{{product_id}}"]
+        }
+      }
+    }
+  ]
+}

@@ -14,8 +14,15 @@ type Product = {
   name: string;
   description: string;
   price: number;
+  quantity: number;
   image_url?: string | null;
   categories: Category[];
+};
+
+type Reservation = {
+  token: string;
+  amount: number;
+  expiresAt: number; // epoch ms
 };
 
 const BASE_URL = "http://127.0.0.1:8000";
@@ -24,6 +31,7 @@ const CATEGORIES_API_URL = `${BASE_URL}/categories`;
 const REGISTER_URL = `${BASE_URL}/register`;
 const LOGIN_URL = `${BASE_URL}/login`;
 const LOGOUT_URL = `${BASE_URL}/logout`;
+const CONFIRM_URL = `${BASE_URL}/confirm`;
 
 async function fetchProducts(): Promise<Product[]> {
   const response = await fetch(API_URL);
@@ -45,7 +53,14 @@ export default function Home() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
+  const [quantity, setQuantity] = useState("");
   const [categoryName, setCategoryName] = useState("");
+
+  // RESERVATION STATE
+  // per-product amount typed into the reserve input, and active reservations keyed by product id
+  const [reserveAmounts, setReserveAmounts] = useState<Record<number, string>>({});
+  const [reservations, setReservations] = useState<Record<number, Reservation>>({});
+  const [now, setNow] = useState(() => Date.now());
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
   const [categoryEditName, setCategoryEditName] = useState("");
 
@@ -147,6 +162,120 @@ export default function Home() {
   useEffect(() => {
     loadProducts();
   }, []);
+
+  // COUNTDOWN TICKER - only runs while at least one reservation is active
+  useEffect(() => {
+    if (Object.keys(reservations).length === 0) {
+      return;
+    }
+    const interval = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(interval);
+  }, [reservations]);
+
+  // AUTO-EXPIRE - drop reservations whose timer ran out and refresh stock from the server
+  useEffect(() => {
+    const expiredIds = Object.entries(reservations)
+      .filter(([, reservation]) => now >= reservation.expiresAt)
+      .map(([productId]) => Number(productId));
+
+    if (expiredIds.length === 0) {
+      return;
+    }
+
+    setReservations((current) => {
+      const next = { ...current };
+      for (const productId of expiredIds) {
+        delete next[productId];
+      }
+      return next;
+    });
+    // the backend rolls the stock back when the reservation expires
+    loadProducts();
+  }, [now, reservations]);
+
+  // RESERVE A PRODUCT (public - no auth needed)
+  async function reserveProduct(productId: number) {
+    clearMessages();
+
+    const amount = Math.max(1, Number(reserveAmounts[productId] ?? "1") || 1);
+
+    try {
+      const response = await fetch(`${API_URL}/${productId}/reserve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount }),
+      });
+
+      const result = await parseJsonSafe(response);
+
+      if (!response.ok) {
+        throw new Error(
+          result?.detail || `Failed to reserve (status ${response.status})`
+        );
+      }
+
+      setReservations((current) => ({
+        ...current,
+        [productId]: {
+          token: result.reservation_token,
+          amount: result.amount,
+          expiresAt: Date.now() + result.expires_in * 1000,
+        },
+      }));
+      setProducts((currentProducts) =>
+        currentProducts.map((product) =>
+          product.id === productId
+            ? { ...product, quantity: result.remaining_quantity }
+            : product
+        )
+      );
+
+      showSuccess(
+        `Reserved ${result.amount}. Confirm within ${result.expires_in} seconds.`
+      );
+    } catch (error) {
+      showError(error instanceof Error ? error.message : "Failed to reserve");
+    }
+  }
+
+  // CONFIRM A RESERVED PURCHASE (public - no auth needed)
+  async function confirmPurchase(productId: number) {
+    clearMessages();
+
+    const reservation = reservations[productId];
+    if (!reservation) {
+      showError("No active reservation to confirm");
+      return;
+    }
+
+    try {
+      const response = await fetch(CONFIRM_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reservation_token: reservation.token }),
+      });
+
+      const result = await parseJsonSafe(response);
+
+      if (!response.ok) {
+        throw new Error(
+          result?.detail || `Failed to confirm (status ${response.status})`
+        );
+      }
+
+      showSuccess(`Purchase confirmed: ${result.amount} item(s).`);
+    } catch (error) {
+      showError(error instanceof Error ? error.message : "Failed to confirm");
+    } finally {
+      // whether it succeeded or the reservation expired server-side, drop it and refresh
+      setReservations((current) => {
+        const next = { ...current };
+        delete next[productId];
+        return next;
+      });
+      loadProducts();
+    }
+  }
 
   // GET CATEGORIES
   useEffect(() => {
@@ -256,6 +385,7 @@ export default function Home() {
     setName("");
     setDescription("");
     setPrice("");
+    setQuantity("");
     setEditingId(null);
   }
 
@@ -268,6 +398,7 @@ export default function Home() {
     setName(product.name);
     setDescription(product.description);
     setPrice(String(product.price));
+    setQuantity(String(product.quantity));
   }
 
   // POST PRODUCT
@@ -277,6 +408,7 @@ export default function Home() {
       name: name.trim(),
       description: description.trim(),
       price: Number(price),
+      quantity: Number(quantity) || 0,
     };
 
     const response = await fetch(API_URL, {
@@ -313,6 +445,7 @@ export default function Home() {
       name: name.trim(),
       description: description.trim(),
       price: Number(price),
+      quantity: Number(quantity) || 0,
     };
 
     const response = await fetch(`${API_URL}/${editingId}`, {
@@ -778,6 +911,16 @@ export default function Home() {
             className="block w-full rounded border p-2"
           />
 
+          <input
+            type="number"
+            min="0"
+            step="1"
+            placeholder="Quantity in stock"
+            value={quantity}
+            onChange={(event) => setQuantity(event.target.value)}
+            className="block w-full rounded border p-2"
+          />
+
           <button
             type="submit"
             className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
@@ -917,6 +1060,14 @@ export default function Home() {
                   })}
                 </p>
 
+                <p
+                  className={
+                    product.quantity > 0 ? "text-gray-100" : "text-red-400"
+                  }
+                >
+                  In stock: {product.quantity}
+                </p>
+
                 <div className="text-gray-300">
                   Categories:{" "}
                   {(product.categories ?? []).length === 0 ? (
@@ -971,6 +1122,56 @@ export default function Home() {
                         </option>
                       ))}
                   </select>
+                )}
+              </div>
+
+              {/* RESERVE / CONFIRM - available to everyone, no login needed */}
+              <div className="mt-2 rounded border border-gray-600 p-3">
+                {reservations[product.id] ? (
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="text-amber-300">
+                      Reserved {reservations[product.id].amount} —{" "}
+                      {Math.max(
+                        0,
+                        Math.ceil(
+                          (reservations[product.id].expiresAt - now) / 1000
+                        )
+                      )}
+                      s left
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => confirmPurchase(product.id)}
+                      className="rounded bg-emerald-600 px-3 py-1 text-white hover:bg-emerald-700"
+                    >
+                      Confirm purchase
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      placeholder="Qty"
+                      value={reserveAmounts[product.id] ?? ""}
+                      onChange={(event) =>
+                        setReserveAmounts((current) => ({
+                          ...current,
+                          [product.id]: event.target.value,
+                        }))
+                      }
+                      className="w-20 rounded border p-1 text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => reserveProduct(product.id)}
+                      disabled={product.quantity <= 0}
+                      className="rounded bg-indigo-600 px-3 py-1 text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-gray-600"
+                    >
+                      {product.quantity > 0 ? "Reserve" : "Out of stock"}
+                    </button>
+                  </div>
                 )}
               </div>
 

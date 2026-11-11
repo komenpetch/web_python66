@@ -1,0 +1,70 @@
+- generic [ref=e1]:
+  - main [ref=e2]:
+    - heading "Product Management" [level=1] [ref=e3]
+    - generic [ref=e4]:
+      - paragraph [ref=e5]: "CORS test: the backend does not allow the HTTP HEAD method."
+      - button "Call HEAD /foo" [active] [ref=e6]
+    - generic [ref=e8]:
+      - generic [ref=e9]:
+        - button "Login" [ref=e10]
+        - button "Register" [ref=e11]
+      - generic [ref=e12]:
+        - textbox "Username" [ref=e13]
+        - textbox "Password" [ref=e14]
+        - button "Login" [ref=e15]
+    - paragraph [ref=e16]: Log in to add or edit products.
+    - list [ref=e45]:
+      - listitem [ref=e46]:
+        - generic [ref=e47]: Fruit
+      - listitem [ref=e48]:
+        - generic [ref=e49]: Electric
+    - paragraph [ref=e50]: "CORS Error: Failed to fetch"
+    - heading "Products" [level=2] [ref=e17]
+    - list [ref=e51]:
+      - listitem [ref=e52]:
+        - generic [ref=e53]:
+          - img "Banana" [ref=e54]
+          - heading "Banana" [level=3] [ref=e55]
+          - paragraph [ref=e56]: "ID: 1"
+          - paragraph [ref=e57]: Sweet
+          - paragraph [ref=e58]: "Price: $100.00"
+          - paragraph [ref=e59]: "In stock: 3"
+          - generic [ref=e60]:
+            - text: "Categories:"
+            - generic [ref=e62]: Fruit
+        - generic [ref=e64]:
+          - spinbutton [ref=e65]
+          - button "Reserve" [ref=e66]
+      - listitem [ref=e67]:
+        - generic [ref=e68]:
+          - img "Phone" [ref=e69]
+          - heading "Phone" [level=3] [ref=e70]
+          - paragraph [ref=e71]: "ID: 2"
+          - paragraph [ref=e72]: Mobile
+          - paragraph [ref=e73]: "Price: $200.00"
+          - paragraph [ref=e74]: "In stock: 10"
+          - generic [ref=e75]:
+            - text: "Categories:"
+            - generic [ref=e77]: Electric
+        - generic [ref=e79]:
+          - spinbutton [ref=e80]
+          - button "Reserve" [ref=e81]
+    - generic [ref=e19]:
+      - generic [ref=e20]:
+        - generic [ref=e21]:
+          - generic [ref=e22]: Product Bot
+          - generic [ref=e23]: Online
+        - paragraph [ref=e83]: Hi! I'm the product bot. Type 'help' to see what I can do.
+        - generic [ref=e26]:
+          - button "help" [ref=e27]
+          - button "list" [ref=e28]
+          - button "categories" [ref=e29]
+          - button "cheapest" [ref=e30]
+          - button "most expensive" [ref=e31]
+        - generic [ref=e32]:
+          - textbox "Ask about products..." [ref=e84]
+          - button "Send" [disabled] [ref=e34]
+      - button "Close chat" [ref=e35]
+  - button "Open Next.js Dev Tools" [ref=e41] [cursor=pointer]:
+    - img [ref=e42]
+  - alert [ref=e85]

@@ -15,6 +15,7 @@ type ServerMessage = {
 };
 
 const WS_URL = "ws://127.0.0.1:8000/ws/chat";
+const STREAM_URL = "http://127.0.0.1:8000/chat/stream";
 const QUICK_COMMANDS = ["help", "list", "categories", "cheapest", "most expensive"];
 
 type ChatBotProps = {
@@ -27,6 +28,7 @@ export default function ChatBot({ onProductEvent }: ChatBotProps) {
   const [input, setInput] = useState("");
   const [connected, setConnected] = useState(false);
   const [open, setOpen] = useState(true);
+  const [streaming, setStreaming] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const nextIdRef = useRef(0);
@@ -41,6 +43,16 @@ export default function ChatBot({ onProductEvent }: ChatBotProps) {
   function addMessage(sender: ChatMessage["sender"], text: string) {
     const id = nextIdRef.current++;
     setMessages((current) => [...current, { id, sender, text }]);
+    return id;
+  }
+
+  // add streamed text to a message that is already on screen
+  function appendToMessage(id: number, text: string) {
+    setMessages((current) =>
+      current.map((message) =>
+        message.id === id ? { ...message, text: message.text + text } : message
+      )
+    );
   }
 
   // CONNECT WEBSOCKET
@@ -79,14 +91,34 @@ export default function ChatBot({ onProductEvent }: ChatBotProps) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [messages, open]);
 
-  function sendMessage(text: string) {
+  // the bot's answer is streamed: read it piece by piece and show each piece right away
+  async function sendMessage(text: string) {
     const trimmed = text.trim();
-    const ws = wsRef.current;
-    if (!trimmed || !ws || ws.readyState !== WebSocket.OPEN) return;
+    if (!trimmed || streaming) return;
 
     addMessage("user", trimmed);
-    ws.send(JSON.stringify({ text: trimmed }));
     setInput("");
+    setStreaming(true);
+
+    const botId = addMessage("bot", "");
+    try {
+      const response = await fetch(`${STREAM_URL}?message=${encodeURIComponent(trimmed)}`);
+      if (!response.ok || !response.body) {
+        throw new Error(`status ${response.status}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        appendToMessage(botId, decoder.decode(value, { stream: true }));
+      }
+    } catch {
+      appendToMessage(botId, "Sorry, I couldn't reach the server.");
+    } finally {
+      setStreaming(false);
+    }
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {

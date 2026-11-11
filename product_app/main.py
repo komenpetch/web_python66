@@ -18,6 +18,7 @@ from .schemas import CategoryCreate, CategoryResponse, CategoryUpdate, Confirmat
 from .database import Base, get_db, engine
 from .jwt.auth import router as auth_router, get_current_user
 from .chatbot import router as chat_router, broadcast_product_event
+from .streaming import router as streaming_router
 from .limiter import limiter
 
 
@@ -70,12 +71,18 @@ app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 app.include_router(auth_router)
 app.include_router(chat_router)
+app.include_router(streaming_router)  # before /products/{product_id} so /products/export matches first
 
 @app.get("/")
 def read_root():
     return {"message": "Online",
             "db_connected": app.state.db is not None
             }
+
+# CORS test: HEAD is not in allow_methods, so the browser blocks this call
+@app.head("/foo")
+def head_foo():
+    return None
 
 @app.post("/products",response_model=ProductResponse,status_code=status.HTTP_201_CREATED,)
 async def create_product(
@@ -330,6 +337,7 @@ app.add_middleware(
         "http://127.0.0.1:3000",
     ],
     allow_credentials=True,
-    allow_methods=["*"],
+    # allow every method except HEAD
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS",],
     allow_headers=["*"],
 )

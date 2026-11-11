@@ -24,3 +24,12 @@ def test_add_product():
 
         r = client.delete(f"/products/{TEST_PRODUCT['id']}", headers=headers)
         assert r.status_code == 200
+
+
+def test_chat_stream_sends_words():
+    with TestClient(app) as client:
+        with client.stream("GET", "/chat/stream", params={"message": "help"}) as r:
+            assert r.status_code == 200
+            chunks = list(r.iter_text())
+        assert len(chunks) >= 1
+        assert "list: show all products" in "".join(chunks)

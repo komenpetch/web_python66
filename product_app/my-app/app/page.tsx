@@ -32,6 +32,7 @@ const REGISTER_URL = `${BASE_URL}/register`;
 const LOGIN_URL = `${BASE_URL}/login`;
 const LOGOUT_URL = `${BASE_URL}/logout`;
 const CONFIRM_URL = `${BASE_URL}/confirm`;
+const FOO_URL = `${BASE_URL}/foo`;
 
 async function fetchProducts(): Promise<Product[]> {
   const response = await fetch(API_URL);
@@ -376,6 +377,24 @@ export default function Home() {
       console.error(error);
     } finally {
       clearAuth();
+    }
+  }
+
+  // CORS TEST - HEAD /foo is not an allowed method on the backend
+  async function handleHeadFoo() {
+    clearMessages();
+
+    try {
+      // the custom header forces a preflight; the server rejects HEAD there
+      const response = await fetch(FOO_URL, {
+        method: "HEAD",
+        headers: { "X-CORS-Test": "1" },
+      });
+      showSuccess(`HEAD /foo succeeded (status ${response.status})`);
+    } catch (error) {
+      showError(
+        `CORS Error: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 
@@ -770,6 +789,17 @@ export default function Home() {
       <h1 className="mb-6 text-3xl font-bold">
         Product Management
       </h1>
+
+      <section className="mb-8 rounded border p-4">
+        <p className="mb-3">CORS test: the backend does not allow the HTTP HEAD method.</p>
+        <button
+          type="button"
+          onClick={handleHeadFoo}
+          className="rounded bg-red-600 px-3 py-1 text-white hover:bg-red-700"
+        >
+          Call HEAD /foo
+        </button>
+      </section>
 
       <section className="mb-8 rounded border p-4">
         {token ? (

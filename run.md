@@ -1,3 +1,6 @@
+
+python -m venv -venv
+
 .\.venv\Scripts\activate.bat
 
 pytest test_main.py -v -s

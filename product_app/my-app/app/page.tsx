@@ -33,6 +33,9 @@ const LOGIN_URL = `${BASE_URL}/login`;
 const LOGOUT_URL = `${BASE_URL}/logout`;
 const CONFIRM_URL = `${BASE_URL}/confirm`;
 const FOO_URL = `${BASE_URL}/foo`;
+const SET_NAME_URL = `${BASE_URL}/set-name`;
+const WELCOME_URL = `${BASE_URL}/welcome`;
+const FORGET_URL = `${BASE_URL}/forget`;
 
 async function fetchProducts(): Promise<Product[]> {
   const response = await fetch(API_URL);
@@ -79,6 +82,11 @@ export default function Home() {
   const [loginPassword, setLoginPassword] = useState("");
   const [registerUsername, setRegisterUsername] = useState("");
   const [registerPassword, setRegisterPassword] = useState("");
+
+  // cookie: visitor name remembered by the server
+  const [visitorName, setVisitorName] = useState<string | null>(null);
+  const [visitorInput, setVisitorInput] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
 
   function clearMessages() {
     setSuccessMessage("");
@@ -357,6 +365,17 @@ export default function Home() {
 
       persistAuth(result.token, loginUsername.trim());
       setLoginPassword("");
+
+      // cookie: remember the username (never the password) for next visit
+      if (rememberMe) {
+        await fetch(SET_NAME_URL, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: loginUsername.trim() }),
+        });
+        setVisitorName(loginUsername.trim());
+      }
       showSuccess("Logged in successfully");
     } catch (error) {
       showError(error instanceof Error ? error.message : "Login failed");
@@ -377,6 +396,58 @@ export default function Home() {
       console.error(error);
     } finally {
       clearAuth();
+    }
+  }
+
+  // COOKIE - ask the server who we are (the browser sends the session_id cookie)
+  useEffect(() => {
+    async function loadWelcome() {
+      try {
+        const response = await fetch(WELCOME_URL, { credentials: "include" });
+        if (!response.ok) return;
+        const result = await parseJsonSafe(response);
+        setVisitorName(result?.name ?? null);
+        if (result?.name) setLoginUsername((current) => current || result.name);
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    loadWelcome();
+  }, []);
+
+  async function handleSetName(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    clearMessages();
+
+    try {
+      const response = await fetch(SET_NAME_URL, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: visitorInput.trim() }),
+      });
+      const result = await parseJsonSafe(response);
+
+      if (!response.ok) {
+        throw new Error(result?.detail?.[0]?.msg || result?.detail || `Failed (status ${response.status})`);
+      }
+
+      setVisitorName(visitorInput.trim());
+      setVisitorInput("");
+    } catch (error) {
+      showError(error instanceof Error ? error.message : "Failed to save name");
+    }
+  }
+
+  async function handleForgetName() {
+    clearMessages();
+
+    try {
+      await fetch(FORGET_URL, { credentials: "include" });
+      setVisitorName(null);
+    } catch (error) {
+      showError(error instanceof Error ? error.message : "Failed to forget name");
     }
   }
 
@@ -791,6 +862,40 @@ export default function Home() {
       </h1>
 
       <section className="mb-8 rounded border p-4">
+        {visitorName ? (
+          <div className="flex items-center justify-between">
+            <p>
+              Hi <span className="font-semibold">{visitorName}</span>
+            </p>
+            <button
+              type="button"
+              onClick={handleForgetName}
+              className="rounded bg-gray-600 px-3 py-1 text-white hover:bg-gray-700"
+            >
+              Forget me
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={handleSetName} className="flex gap-2">
+            <input
+              value={visitorInput}
+              onChange={(e) => setVisitorInput(e.target.value)}
+              placeholder="Your name"
+              maxLength={50}
+              required
+              className="flex-1 rounded border px-2 py-1"
+            />
+            <button
+              type="submit"
+              className="rounded bg-blue-600 px-3 py-1 text-white hover:bg-blue-700"
+            >
+              Remember me
+            </button>
+          </form>
+        )}
+      </section>
+
+      <section className="mb-8 rounded border p-4">
         <p className="mb-3">CORS test: the backend does not allow the HTTP HEAD method.</p>
         <button
           type="button"
@@ -860,6 +965,14 @@ export default function Home() {
                   required
                   className="block w-full rounded border p-2"
                 />
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(event) => setRememberMe(event.target.checked)}
+                  />
+                  Remember my username
+                </label>
                 <button
                   type="submit"
                   className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"

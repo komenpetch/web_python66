@@ -19,6 +19,7 @@ from .database import Base, get_db, engine
 from .jwt.auth import router as auth_router, get_current_user
 from .chatbot import router as chat_router, broadcast_product_event
 from .streaming import router as streaming_router
+from .cookie import router as cookie_router
 from .limiter import limiter
 
 
@@ -71,6 +72,7 @@ app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 app.include_router(auth_router)
 app.include_router(chat_router)
+app.include_router(cookie_router)
 app.include_router(streaming_router)  # before /products/{product_id} so /products/export matches first
 
 @app.get("/")
